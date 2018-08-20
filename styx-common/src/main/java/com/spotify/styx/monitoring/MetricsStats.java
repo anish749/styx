@@ -32,15 +32,23 @@ import com.spotify.styx.model.WorkflowId;
 import com.spotify.styx.state.RunState;
 import com.spotify.styx.util.EventUtil;
 import com.spotify.styx.util.Time;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import javaslang.Tuple;
 import javaslang.Tuple2;
 import javaslang.Tuple3;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class MetricsStats implements Stats {
+
+  private static final Logger log = LoggerFactory.getLogger(MetricsStats.class);
 
   private static final String UNIT_SECOND = "s";
   private static final String UNIT_MILLISECOND = "ms";
@@ -315,6 +323,7 @@ public final class MetricsStats implements Stats {
 
   @Override
   public void recordDatastoreEntityReads(String kind, int n) {
+    sampleStackTrace(() -> "datastore entity read: kind=" + kind + ", n=" + n);
     recordDatastoreOperations("read", kind, n);
   }
 
@@ -410,5 +419,21 @@ public final class MetricsStats implements Stats {
   private Meter datastoreOperationMeter(String operation, String kind) {
     return datastoreOperationMeters.computeIfAbsent(Tuple.of(operation, kind),
         t -> registry.meter(DATASTORE_OPERATION_RATE.tagged("operation", operation, "kind", kind)));
+  }
+
+  /**
+   * Logs the current stack trace for 1% of all calls.
+   */
+  private static void sampleStackTrace(Supplier<String> name) {
+    if (ThreadLocalRandom.current().nextInt(100) == 0) {
+      final String stacktrace = currentStackTrace();
+      log.debug("stacktrace sample: {}: {}", name.get(), stacktrace);
+    }
+  }
+
+  private static String currentStackTrace() {
+    final StringWriter sw = new StringWriter();
+    new Throwable().printStackTrace(new PrintWriter(sw));
+    return sw.toString();
   }
 }
